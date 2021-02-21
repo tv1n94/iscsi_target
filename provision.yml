@@ -1,0 +1,109 @@
+- name: ntp and create iscsi target
+  hosts: iscsi_target
+  tasks:
+  - yum: name=cronyd state=absent
+
+  - name: set timezone
+    become: yes
+    command: /usr/bin/timedatectl set-timezone Europe/Moscow
+
+  - name: Install NTPD
+    yum: name=ntp state=present
+    become: yes
+  - name: Ensure NTP is running.
+    service: name=ntpd state=started enabled=yes
+    become: yes
+
+  - name: install targetcli
+    yum: name=targetcli state=latest
+    become: yes
+
+  - name: create fileIO for iscsi target
+    become: yes
+    shell: targetcli /backstores/fileio create name=disk01 file_or_dev=/mnt/disk01 size=2G
+   
+  - name: chmod for disk01
+    become: yes
+    shell: chmod 777 /mnt/disk01
+    
+  - name: create IQN
+    become: yes
+    shell: targetcli /iscsi create iqn.2021-02.ru.otus:target00
+
+  - name: create and setting iscsi target
+    become: yes
+    shell: targetcli /iscsi/iqn.2021-02.ru.otus:target00/tpg1/luns create /backstores/fileio/disk01
+
+
+- name: ntp and create iscsi initiator
+  hosts: iscsi_initiator
+  tasks:
+  - yum: name=cronyd state=absent
+
+  - name: set timezone
+    become: yes
+    command: /usr/bin/timedatectl set-timezone Europe/Moscow
+
+  - name: Install NTPD
+    yum: name=ntp state=present
+    become: yes
+  - name: Ensure NTP is running.
+    service: name=ntpd state=started enabled=yes
+    become: yes
+
+  - name: install iscsi-initiator-utils
+    yum: name=iscsi-initiator-utils state=latest
+    become: yes
+
+  - name: chmod /etc/iscsi/initiatorname.iscsi
+    shell: /usr/bin/sudo chmod 777 /etc/iscsi/initiatorname.iscsi
+    become: yes
+
+  - name: edit IQN iscsi initiator
+    shell: /usr/bin/sudo echo -e "InitiatorName=iqn.2021-02.com.redhat:e1ac159657d1" > /etc/iscsi/initiatorname.iscsi
+    become: yes
+
+  - name: Check 1 path for iscsi
+    command: /usr/sbin/iscsiadm -m discovery -t st -p 192.168.1.10
+    become: yes
+
+  - name: Check 2 path for iscsi
+    command: /usr/sbin/iscsiadm -m discovery -t st -p 192.168.2.10
+    become: yes
+
+  - name: Check 1 and 2 path for iscsi
+    command: /usr/sbin/iscsiadm -m node
+    become: yes
+
+  
+
+
+- name: ntp and create iscsi target
+  hosts: iscsi_target
+  tasks:
+  - name: allow iqn iqn.2021-02.com.redhat:e1ac159657d1
+    become: yes
+    command: sudo targetcli iscsi/iqn.2021-02.ru.otus:target00/tpg1/acls/ create iqn.2021-02.com.redhat:e1ac159657d1
+
+
+- name: restart iscsi initiator service and conect
+  hosts: iscsi_initiator
+  tasks:
+
+  - name: connect to iscsi target
+    become: yes
+    command: /usr/sbin/iscsiadm -m node -l -T iqn.2021-02.ru.otus:target00
+
+  - name: check connection
+    shell: /usr/bin/lsblk
+
+  - name: install multipath
+    yum: name=device-mapper-multipath state=present
+    become: yes
+  - name: Ensure NTP is running.
+    service: name=multipathd state=started enabled=yes
+    become: yes
+
+  - name: start multipath
+    become: yes
+    command: /usr/sbin/mpathconf --enable --with_multipathd y

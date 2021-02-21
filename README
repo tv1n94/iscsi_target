@@ -1,0 +1,52 @@
+Данная конфигурация позволяет развернуть виртуальную машину (CentOS 7) c ISCSI Target FileIO в провайдере Advanced Hosting (AH). Настройка будет происходить через Ansible. 
+Также будет развернута вторая виртуальная машина с iscsi initiator для проверки работы ISCSI Target. 
+
+Виртуальные машины будут развеёрнуты с адресами из подсетей 192.168.1.0/24 и 192.168.2.0/24. 
+
+Требования для запуска данной конфигурации: 
+-Наличие Linux-машины
+-Установленные пакеты Ansible и Terraform.
+-Аккаунт в Advanced Hosting, c добавленым токеном и ssh fingerprint. В аккаунте не должно быть заведено сетей 192.168.1.0/24 и 192.168.2.0/24.
+
+
+Описание файлов:
+-ansible.cfg - файл с конфигурацией Ansible
+-main.tf - главный файл для terraform. Указываем наш провайдер и токен для работы с провайдером. 
+-variables.tf - описание типов всех переменных
+-vm.tf - файл, с описанием ВМ
+-terraform.tfvars - файл, в котором хранятся все значения переменных. НУЖНО ЗАПОЛНИТЬ ПЕРЕД запуском команды terraform apply
+-template.tf - сценарий, в котором содержится инструкция по выводу всех адресов в файл hosts
+-output.tf - terraform-сценарий, который выводит нам IP-адрес созданной виртуальной машины
+-provision.yml - Ansible-playbook для установки Nginx
+
+
+Как развернуть виртуальную машину: 
+1) На подготовленную Linux-машину копируем все файлы (main.tf, variables.tf, vm.tf, terraform.tfvars, template.tf, output.tf, provision.yml)
+2) Открываем файл terraform.tfvars и вносим следующие значения параметров:
+  -ah_dc - можно указать значение ams1 (Дата-центр в Амстердаме) или ash1 (Дата-центр в Америке)
+  -ah_token - указываем значение из AH - API - Manage API access tokens
+  -ah_machine_type - указываем тип машины, например "start-l" все типы можно посмотреть в  AH - API - Slugs - Cloud Servers
+  -ah_image_type - "centos-7-x64", список всех образов можно посмотреть в AH - API - Slugs - Images
+
+3) В файле vm.tf в разделе указываем fingerprint вашего ключа из AH - SSH KEYS
+
+4) Находясь в каталоге, выполняем команду terraform plan. Данная команда поможет проверить, не было ли допущено ошибок
+
+5) Выполняем команду terraform apply -auto-approve
+Будет развернуто 2 ВМ на CentOS 7 и, с помощью Ansible, на первую машину будет установлен ISCSI Target, а на второрую - ISCSI Initiator с Multipath.
+
+
+Проверка корректного выполнения скрипта:
+Заходим на ВМ с ISCSI Initiator (ssh adminroot@<YOUR_IP_VM>) и вводим команду lsblk, вывод должен быть примерно следующим: 
+[adminroot@wvds123878 ~]$ lsblk
+NAME     MAJ:MIN RM  SIZE RO TYPE  MOUNTPOINT
+sda        8:0    0 37.3G  0 disk  
+└─sda1     8:1    0 37.3G  0 part  /
+sdb        8:16   0    2G  0 disk  
+└─mpatha 253:0    0    2G  0 mpath 
+sdc        8:32   0    2G  0 disk  
+└─mpatha 253:0    0    2G  0 mpath 
+
+
+Удаление ВМ:
+Для удаления ВМ достаточно ввести команду: terraform destroy -auto-approve
